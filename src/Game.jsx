@@ -538,6 +538,7 @@ export default function Game() {
     const [px, setPx] = useState(150); // X 轴位置 (0 - carWidth)
     const [py, setPy] = useState(20);  // Y 轴景深 (0=走道最外侧，60=贴近里侧车窗座位)
     const [dir, setDir] = useState("R"); 
+    const [isMoving, setIsMoving] = useState(false); // 监控是否在迈步
     const containerWidth = 900; 
     const carWidth = 1600; 
 
@@ -593,11 +594,14 @@ export default function Game() {
       let anim = true;
       const moveLoop = () => {
         if (!anim) return;
-        if (keys["KeyD"] || keys["ArrowRight"]) { setPx(x => Math.min(x + 7, carWidth - 120)); setDir("R"); }
-        if (keys["KeyA"] || keys["ArrowLeft"])  { setPx(x => Math.max(x - 7, 40)); setDir("L"); }
-        if (keys["KeyW"] || keys["ArrowUp"])    { setPy(y => Math.min(y + 3, 60)); }
-        if (keys["KeyS"] || keys["ArrowDown"])  { setPy(y => Math.max(y - 3, 0)); }
+        let moving = false;
+        if (keys["KeyD"] || keys["ArrowRight"]) { setPx(x => Math.min(x + 7, carWidth - 120)); setDir("R"); moving = true; }
+        if (keys["KeyA"] || keys["ArrowLeft"])  { setPx(x => Math.max(x - 7, 40)); setDir("L"); moving = true; }
+        if (keys["KeyW"] || keys["ArrowUp"])    { setPy(y => Math.min(y + 3, 60)); moving = true; }
+        if (keys["KeyS"] || keys["ArrowDown"])  { setPy(y => Math.max(y - 3, 0)); moving = true; }
         
+        setIsMoving(moving);
+
         if (keys["Space"]) {
           if (pzRef.current === 0 || pzRef.current === 45 || pzRef.current === 150) {
             vzRef.current = 13; setIsGrounded(false); keys["Space"] = false; // 防连跳
@@ -681,8 +685,17 @@ export default function Game() {
 
             {/* 带有纵深关系的乘警汪新：受 px, py, pz 联合控制！ */}
             <div style={{ position: "absolute", bottom: 95 + py * 0.5 + pz, left: px - 25, zIndex: 100 - py, textAlign: "center", pointerEvents: "none", transition: "bottom 0.05s" }}>
-               {/* 2.5D 高精动态贴图 (受Z重力与Y透视控制) */}
-               <div style={{ width: 85, height: 110, backgroundImage: "url('/wangxin.png')", backgroundSize: "contain", backgroundPosition: "bottom", backgroundRepeat: "no-repeat", transform: dir === "L" ? "scaleX(-1)" : "scaleX(1)", filter: pz > 0 ? "drop-shadow(0 30px 20px rgba(0,0,0,0.1))" : "drop-shadow(0 8px 10px rgba(0,0,0,0.4))", transition: "filter 0.2s" }} />
+               {/* 2.5D Sprite Sheet 动画切割渲染区 */}
+               {(() => {
+                  let frame = 0; // 0: Idle
+                  if (pz > 0) frame = 4; // 4: Jump
+                  else if (isMoving) {
+                    frame = (Math.floor(Date.now() / 150) % 3) + 1; // 1, 2, 3: Walk Cycle
+                  }
+                  return (
+                    <div style={{ width: 85, height: 110, backgroundImage: "url('/wangxin_sprite.png')", backgroundSize: "500% 100%", backgroundPosition: `${frame * 25}% center`, backgroundRepeat: "no-repeat", transform: dir === "L" ? "scaleX(-1)" : "scaleX(1)", filter: pz > 0 ? "drop-shadow(0 30px 20px rgba(0,0,0,0.1))" : "drop-shadow(0 8px 10px rgba(0,0,0,0.4))", transition: "filter 0.2s" }} />
+                  );
+               })()}
                {/* 脚下地影，高度随 Z 变淡，位置留在物理地面 py 上 */}
                <div style={{ position: "absolute", bottom: -pz - 5, left: "50%", transform: "translateX(-50%)", width: 45, height: 12, background: "rgba(0,0,0,0.4)", borderRadius: "50%", filter: "blur(4px)", opacity: Math.max(0.1, 1 - pz/100) }} />
             </div>
