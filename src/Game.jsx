@@ -533,185 +533,177 @@ export default function Game() {
     );
   }
 
-  // ── 2D controllable Patrol Scene ──
+  // ── 2.5D controllable Patrol Scene (Glassmorphism + Depth) ──
   function PatrolScene({ pax, canGo, onProceed, showSkill, ch }) {
-    const [px, setPx] = useState(100); // 汪新 X 坐标
+    const [px, setPx] = useState(150); // X 轴位置 (0 - carWidth)
+    const [py, setPy] = useState(20);  // Y 轴景深 (0=走道最外侧，60=贴近里侧车窗座位)
     const [dir, setDir] = useState("R"); 
     const containerWidth = 900; 
-    const carWidth = 1600; // 拓宽关卡
+    const carWidth = 1600; 
 
-    // 物理引擎相关的 Ref 模型
-    const pyRef = useRef(110); 
-    const vyRef = useRef(0); 
-    const [py, setPy] = useState(110); // 上屏更新 Y 坐标
+    // Z 轴物理 (跳跃)
+    const pzRef = useRef(0); 
+    const vzRef = useRef(0); 
+    const [pz, setPz] = useState(0); 
     const [isGrounded, setIsGrounded] = useState(true);
 
     const paxCoords = {};
-    pax.forEach((p, idx) => { paxCoords[p.id] = 320 + idx * 240; });
+    pax.forEach((p, idx) => { paxCoords[p.id] = { x: 350 + idx * 240, y: 55 }; }); // 乘客固定坐在内侧 (Y=55)
 
     const camOffset = Math.max(0, Math.min(px - containerWidth / 2, carWidth - containerWidth));
 
-    // 60FPS 重力 & 平台碰撞循环
+    // 60FPS 2.5D 重力 & 多维碰撞循环
     useEffect(() => {
       let anim = true;
       const tick = () => {
         if (!anim) return;
-        vyRef.current -= 0.8; // 重力分量
-        pyRef.current += vyRef.current;
+        vzRef.current -= 0.8; // Z轴重力拉扯
+        pzRef.current += vzRef.current;
 
         let onPlat = false;
-        // 1. 地板层
-        if (pyRef.current <= 110) { pyRef.current = 110; vyRef.current = 0; onPlat = true; }
+        // 1. 基本地板层 (Z = 0)
+        if (pzRef.current <= 0) { pzRef.current = 0; vzRef.current = 0; onPlat = true; }
         
-        // 2. 座椅扶手/靠背层 (y = 155), 对应 X 需在乘客/座椅范围内 (x 坐标 ± 60)
-        pax.forEach(p => {
-          const x = paxCoords[p.id];
-          if (Math.abs(px - x) < 65 && pyRef.current >= 150 && pyRef.current <= 165 && vyRef.current <= 0) {
-            pyRef.current = 155; vyRef.current = 0; onPlat = true;
-          }
-        });
+        // 2. 纵深互动：当 Y 靠近内侧 (py > 40)，可以跳上座位层 (Z=45)
+        if (py >= 40 && pzRef.current >= 40 && pzRef.current <= 55 && vzRef.current <= 0) {
+           pzRef.current = 45; vzRef.current = 0; onPlat = true;
+        }
 
-        // 3. 上方行李架层 (y = 260), 延展整车 X: 150px - 1400px
-        if (px >= 140 && px <= 1420 && pyRef.current >= 250 && pyRef.current <= 270 && vyRef.current <= 0) {
-          pyRef.current = 260; vyRef.current = 0; onPlat = true;
+        // 3. 纵深高阶互动：在内侧时甚至可以跳上行李架 (Z=150)
+        if (py >= 45 && px >= 140 && px <= 1420 && pzRef.current >= 140 && pzRef.current <= 160 && vzRef.current <= 0) {
+           pzRef.current = 150; vzRef.current = 0; onPlat = true;
         }
 
         setIsGrounded(onPlat);
-        setPy(pyRef.current);
+        setPz(pzRef.current);
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
       return () => { anim = false; };
-    }, [px, pax]);
+    }, [px, py]);
 
+    // 2.5D 八向移动监控
     useEffect(() => {
-      const handleKey = (e) => {
-        if (e.key === "KeyD" || e.key === "ArrowRight") { setPx(x => Math.min(x + 28, carWidth - 120)); setDir("R"); }
-        else if (e.key === "KeyA" || e.key === "ArrowLeft") { setPx(x => Math.max(x - 28, 40)); setDir("L"); }
-        else if (e.key === " " || e.key === "Space") {
-          // 如果在平台上，可以跳跃
-          if (pyRef.current === 110 || pyRef.current === 155 || pyRef.current === 260) {
-            vyRef.current = 13; setIsGrounded(false);
+      const keys = {};
+      const handleKeyDown = (e) => { keys[e.code] = true; };
+      const handleKeyUp = (e) => { keys[e.code] = false; };
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+
+      let anim = true;
+      const moveLoop = () => {
+        if (!anim) return;
+        if (keys["KeyD"] || keys["ArrowRight"]) { setPx(x => Math.min(x + 7, carWidth - 120)); setDir("R"); }
+        if (keys["KeyA"] || keys["ArrowLeft"])  { setPx(x => Math.max(x - 7, 40)); setDir("L"); }
+        if (keys["KeyW"] || keys["ArrowUp"])    { setPy(y => Math.min(y + 3, 60)); }
+        if (keys["KeyS"] || keys["ArrowDown"])  { setPy(y => Math.max(y - 3, 0)); }
+        
+        if (keys["Space"]) {
+          if (pzRef.current === 0 || pzRef.current === 45 || pzRef.current === 150) {
+            vzRef.current = 13; setIsGrounded(false); keys["Space"] = false; // 防连跳
           }
         }
+        requestAnimationFrame(moveLoop);
       };
-      window.addEventListener("keydown", handleKey);
-      return () => window.removeEventListener("keydown", handleKey);
+      requestAnimationFrame(moveLoop);
+
+      return () => {
+        anim = false;
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("keyup", handleKeyUp);
+      };
     }, [carWidth]);
 
-    const nearPax = pax.find(p => Math.abs(px - paxCoords[p.id]) <= 75 && Math.abs(py - 110) < 30);
-    const taskDesc = ch === 1 ? "大力提到：此趟列车有扒手团伙活动，需找出可疑人员并收集证据。" : ch === 2 ? "打拐专项行动：需同时锁定嫌疑人与受害儿童。" : ch === 3 ? "情报确认：贾金龙在此列车上。需收集满破绽压迫原角。" : "陪同新徒弟完成巡视。";
+    // 判定近处交互 (不仅X要近，Y深度也要匹配)
+    const nearPax = pax.find(p => {
+       const pd = paxCoords[p.id];
+       return Math.abs(px - pd.x) <= 80 && Math.abs(py - pd.y) < 30 && pz < 40; 
+    });
+    
+    const taskDesc = ch === 1 ? "大力提到：此趟列车有扒手团伙活动，需找出可疑人员并收集证据。" : ch === 2 ? "打拐专项行动：需同时锁定嫌疑人与受害儿童。" : "情报确认：发现关键目标。";
 
-    const ContraStyles = (
+    const GlassStyles = (
       <style>{`
-        @keyframes crtFlicker { 0% { opacity: 0.98; } 100% { opacity: 1; } }
-        @keyframes neonFast { 0% { background-position: 0 0; } 100% { background-position: -800px 0; } }
-        @keyframes gridMove { 0% { transform: translateZ(0) translateY(0); } 100% { transform: translateZ(0) translateY(12px); } }
-        @keyframes dashLine { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -20; } }
+        .glass-panel { background: rgba(255, 255, 255, 0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); }
+        .glass-btn { background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05)); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 20px; color: #fff; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .glass-btn:hover { background: rgba(255,255,255,0.3); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.2); }
       `}</style>
     );
 
     return (
-      <div style={{ ...base, overflow: "hidden", height: "100vh", position: "relative", background: "#05080f", color: "#fff" }}>
-        {ContraStyles}<style>{KF}</style>{Grain}{Scan}{HUD}{Toast}{AchPopup}{NotesOverlay}{LoveOverlay}
+      <div style={{ ...base, overflow: "hidden", height: "100vh", position: "relative", background: "#f0f4f8", color: "#333", fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+        {GlassStyles}<style>{KF}</style>{Toast}{AchPopup}{NotesOverlay}{LoveOverlay}
 
-        {/* 1. CRT Scanline / Grind overlay (Arcade 质感全覆屏) */}
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(18,16,16,0) 50%,rgba(0,0,0,0.2) 50%),linear-gradient(90deg,rgba(0,255,255,0.05),rgba(255,0,0,0.03),rgba(0,0,255,0.04))", backgroundSize: "100% 4px, 3px 100%", zIndex: 300, pointerEvents: "none", animation: "crtFlicker 0.15s infinite ease" }}/>
-
-        {/* 顶部 Arcade HUD 任务面板 */}
-        <div style={{ position: "absolute", top: 20, left: 20, zIndex: 100, maxWidth: 320, background: "rgba(5,10,20,0.85)", padding: "12px 16px", border: "2px solid #00F0FF", borderRadius: 4, boxShadow: "0 0 15px rgba(0,240,255,0.4)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontStyle: "italic", fontSize: 13, color: "#00F0FF", fontWeight: "900", letterSpacing: 2, marginBottom: 5 }}>STAGE {ch} - PATROL</div>
-          <div style={{ color: "#FFF", fontSize: 11, lineHeight: 1.5, opacity: 0.9 }}>{taskDesc}</div>
-          {canGo && <div style={{ color: "#39FF14", fontSize: 11, marginTop: 6, fontWeight: "900", textShadow: "0 0 8px #39FF14" }}>✓ COMPLETED! PROCEED TO RIGHT</div>}
-          <div style={{ color: "#FF8A00", fontSize: 9, marginTop: 8 }}>[ ←/→ MOVE ]  [ SPACE JUMP ]</div>
+        {/* 顶部现代 Glassmorphism 任务挂件 */}
+        <div className="glass-panel" style={{ position: "absolute", top: 20, left: 20, zIndex: 100, maxWidth: 340, padding: "16px 20px", color: "#fff", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
+          <div style={{ fontSize: 13, fontWeight: "800", letterSpacing: 1, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ padding: "4px 8px", background: "#fff", color: "#222", borderRadius: 8, fontSize: 11 }}>STAGE {ch}</span>
+            <span>巡查车厢</span>
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.6, opacity: 0.9 }}>{taskDesc}</div>
+          {canGo && <div style={{ fontSize: 12, marginTop: 10, fontWeight: "800", color: "#a8ffb2" }}>✅ 巡查完毕！可前往下一节车厢。</div>}
+          <div style={{ fontSize: 10, marginTop: 12, opacity: 0.6, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)" }}>W/A/S/D 移动，空格键跃击起跳</div>
         </div>
 
         {showSkill && !skillUsed && (
-            <div onClick={() => useSkill(pax)} style={{ position: "absolute", top: 18, right: 230, zIndex: 100, padding: "7px 14px", background: "rgba(220,10,50,0.3)", border: "2px solid #FF003C", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, animation: "skillGlow 1s infinite alternate", boxShadow: "0 0 12px rgba(255,0,60,0.5)" }}>
-              <span style={{ fontSize: 18, filter: "drop-shadow(0 0 4px #FF003C)" }}>👮</span>
-              <div><div style={{ color: "#FF003C", fontSize: 11, fontWeight: "900" }}>SKILL: 老刑警之眼</div><div style={{ color: "#FFF", fontSize: 9, opacity: 0.8 }}>AP −10 [CLICK]</div></div>
+            <div className="glass-panel" onClick={() => useSkill(pax)} style={{ position: "absolute", top: 20, right: 230, zIndex: 100, padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, animation: "floatBob 3s ease infinite" }}>
+              <div style={{ fontSize: 24, background: "#fff", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: "#333" }}>👁</div>
+              <div><div style={{ color: "#fff", fontSize: 13, fontWeight: "800" }}>老刑警之眼</div><div style={{ color: "#eee", fontSize: 10, opacity: 0.9 }}>消耗 10 AP 揭示破绽</div></div>
             </div>
         )}
 
-        {/* 2D 卷轴场景主容器 */}
+        {/* 2.5D 场景主容器跟随摄像机 */}
         <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-          {/* 加入精美 16-Bit 像素背景垫底 (随摄像机camOffset偏移) */}
-          <div style={{ position: "absolute", inset: 0, backgroundImage: "url('/ch1_bg.png')", backgroundSize: "cover", backgroundRepeat: "repeat", opacity: 0.1, zIndex: 0, pointerEvents: "none", transform: `translateX(${-camOffset * 0.4}px)` }}/>
-
-          <div style={{ position: "absolute", bottom: 0, left: 0, width: carWidth, height: "100%", transform: `translateX(${-camOffset}px)`, transition: "transform 0.15s ease-out", display: "flex", flexDirection: "column", justifyContent: "flex-end", paddingBottom: 100 }}>
+          <div style={{ position: "absolute", bottom: -50, left: 0, width: carWidth, height: "110%", transform: `translateX(${-camOffset}px)`, transition: "transform 0.2s cubic-bezier(0.1, 0.7, 0.1, 1)", display: "flex", flexDirection: "column", justifyContent: "flex-end", paddingBottom: 100 }}>
             
-            {/* 背景层：高速移窗 */}
-            <div style={{ position: "absolute", bottom: 120, left: 0, width: "100%", display: "flex", gap: 90, paddingLeft: 140 }}>
-               {Array.from({length: 8}).map((_, i) => (
-                 <div key={i} style={{ width: 120, height: 160, background: "rgba(10,20,30,0.8)", border: "3px solid #00F0FF", borderBottomWidth: 10, borderRadius: "5px", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", boxShadow: "inset 0 0 20px #00F0FFaa, 0 0 10px rgba(0,240,255,0.3)" }}>
-                   <div style={{ width: "94%", height: "94%", background: "#020408", position: "relative", overflow: "hidden" }}>
-                     {/* 窗外移景：16-Bit 快速流影 */}
-                     <div style={{ width: "200%", height: "100%", background: "linear-gradient(90deg,#0a1525 0%, #00F0FF 50%, #0a1525 100%)", backgroundImage: "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"160\"><rect x=\"20\" y=\"100\" width=\"15\" height=\"60\" fill=\"%23081020\"/><rect x=\"80\" y=\"90\" width=\"20\" height=\"70\" fill=\"%23050a10\"/><circle cx=\"140\" cy=\"40\" r=\"2\" fill=\"%2300F0FF\"/></svg>')", backgroundRepeat: "repeat-x", animation: "neonFast 3s linear infinite" }} />
+            {/* 2.5D 精美大画幅卡通背景 */}
+            <div style={{ position: "absolute", inset: 0, backgroundImage: "url('/ch1_bg.png')", backgroundSize: "cover", backgroundPosition: "bottom left", zIndex: 0, boxShadow: "inset 0 -50px 100px rgba(0,0,0,0.5)" }} />
+
+            {/* 客座层级 NPC (根据他们靠内的 Y 深度进行 Z-Index 遮挡) */}
+            {pax.map(p => {
+               const pd = paxCoords[p.id];
+               const done = paxDone.includes(p.id);
+               const active = nearPax && nearPax.id === p.id;
+               const isKey = ["suspect", "victim2", "jia", "contact", "witness3"].includes(p.role);
+               // 算作处于深度层面
+               const depthZ = 100 - pd.y; 
+               return (
+                 <div key={p.id} style={{ position: "absolute", left: pd.x - 45, bottom: 95 + pd.y * 0.5, textAlign: "center", zIndex: depthZ, transition: "all 0.3s" }}>
+                   {/* 乘客立绘 */}
+                   <div style={{ fontSize: 46, animation: (active && !done) ? "pulse 0.8s infinite" : "none", filter: done ? "grayscale(40%) blur(1px)" : "drop-shadow(0 10px 15px rgba(0,0,0,0.3))" }}>{p.ic}</div>
+                   {/* 优雅的名签 */}
+                   <div className="glass-panel" style={{ position: "absolute", top: -35, left: "50%", transform: "translateX(-50%)", padding: "4px 10px", borderRadius: 12, whiteSpace: "nowrap" }}>
+                     <span style={{ fontSize: 11, fontWeight: "bold", color: done ? (isKey? "#ff7675" : "#74b9ff") : "#FFF" }}>{done ? p.name : "观察目标"}</span>
                    </div>
                  </div>
-               ))}
+               );
+            })}
+
+            {/* 带有纵深关系的乘警汪新：受 px, py, pz 联合控制！ */}
+            <div style={{ position: "absolute", bottom: 95 + py * 0.5 + pz, left: px - 25, zIndex: 100 - py, textAlign: "center", pointerEvents: "none", transition: "bottom 0.05s" }}>
+               {/* 2.5D 高精动态贴图 (受Z重力与Y透视控制) */}
+               <div style={{ width: 85, height: 110, backgroundImage: "url('/wangxin.png')", backgroundSize: "contain", backgroundPosition: "bottom", backgroundRepeat: "no-repeat", transform: dir === "L" ? "scaleX(-1)" : "scaleX(1)", filter: pz > 0 ? "drop-shadow(0 30px 20px rgba(0,0,0,0.1))" : "drop-shadow(0 8px 10px rgba(0,0,0,0.4))", transition: "filter 0.2s" }} />
+               {/* 脚下地影，高度随 Z 变淡，位置留在物理地面 py 上 */}
+               <div style={{ position: "absolute", bottom: -pz - 5, left: "50%", transform: "translateX(-50%)", width: 45, height: 12, background: "rgba(0,0,0,0.4)", borderRadius: "50%", filter: "blur(4px)", opacity: Math.max(0.1, 1 - pz/100) }} />
             </div>
 
-            {/* 平台级：多层行李架平台 (y=260) */}
-            <div style={{ position: "absolute", bottom: 260 + 100, left: 180, width: 1250, height: 6, background: "linear-gradient(90deg, #00F0FF, #FF003C)", boxShadow: "0 0 15px rgba(255,0,60,0.8), 0 -2px 0 #fff", borderRadius: 3, zIndex: 12 }}>
-               {/* 行理架点缀物 */}
-               {Array.from({length: 8}).map((_, i) => (
-                  <div key={i} style={{ position: "absolute", left: (i * 140 + 30) + "px", bottom: 5, fontSize: 18, filter: "drop-shadow(0 0 4px #000)" }}>{["🧳", "📦", "💼", "🎒"][i%4]}</div>
-               ))}
-            </div>
-
-            {/* 客座平台层：乘客与高级多维座位 (y=155) */}
-            <div style={{ position: "absolute", bottom: 120, left: 0, width: carWidth, display: "flex", zIndex: 10 }}>
-               {pax.map(p => {
-                 const x = paxCoords[p.id];
-                 const done = paxDone.includes(p.id);
-                 const active = nearPax && nearPax.id === p.id;
-                 const isKey = ["suspect", "victim2", "jia", "contact", "witness3"].includes(p.role);
-                 return (
-                   <div key={p.id} style={{ position: "absolute", left: x - 45, bottom: 0, textAlign: "center" }}>
-                     <div style={{ fontSize: 42, animation: (active && !done) ? "pulse 0.8s infinite" : "none", filter: done ? "grayscale(40%)" : "none" }}>{p.ic}</div>
-                     {/* 站脚座椅平台 (X 对应上层扶手) */}
-                     <div style={{ width: 62, height: 35, background: "linear-gradient(180deg, rgba(0,240,255,0.4), #020408)", border: "1px solid #00F0FF", borderRadius: "4px 4px 0 0", marginTop: -10, position: "relative", zIndex: -1, boxShadow: "0 0 8px rgba(0,240,255,0.4)" }} />
-                     {/* 像素霓虹名签 */}
-                     <div style={{ position: "absolute", top: -25, left: "50%", transform: "translateX(-50%)", padding: "1px 5px", background: "#0A0D14", border: "1px solid " + (done ? (isKey? "#FF003C" : "#00F0FF") : "rgba(255,255,255,0.2)"), whiteSpace: "nowrap" }}>
-                       <span style={{ fontSize: 9, fontFamily: "monospace", color: done ? (isKey? "#FF003C" : "#00F0FF") : "#FFF" }}>{done ? p.name : "[ ??? ]"}</span>
-                     </div>
-                   </div>
-                 );
-               })}
-            </div>
-
-            {/* 乘警汪新下方：Arcade 电子地板 */}
-            <div style={{ position: "absolute", bottom: 95, left: 0, width: carWidth, height: 25, background: "#0A0D14", borderTop: "3px solid #00F0FF", borderBottom: "5px solid #000", boxShadow: "0 -8px 20px rgba(0,240,255,0.4)" }}>
-               {/* 霓虹网格走道装饰 */}
-               <div style={{ width: "100%", height: "100%", backgroundImage: "linear-gradient(transparent 18px, #00F0FF 2px), linear-gradient(90deg, transparent 18px, #00F0FF 2px)", backgroundSize: "20px 20px", opacity: 0.15 }} />
-            </div>
-
-            {/* 安全连接门 / 通关点 */}
-            <div style={{ position: "absolute", left: carWidth - 120, bottom: 120, width: 80, height: 160, background: "rgba(10,20,30,0.9)", border: "3px solid " + (canGo ? "#39FF14" : "#FF003C"), borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 25px " + (canGo ? "#39FF14" : "rgba(255,0,60,0.5)") }}>
-               {px >= carWidth - 160 && canGo ? (
-                  <button onClick={onProceed} style={{ padding: "8px 16px", background: "#39FF14", border: "1px solid #FFF", color: "#000", fontSize: 13, cursor: "pointer", fontWeight: "900", animation: "skillGlow 1.5s ease infinite" }}>NEXT ▶</button>
+            {/* 安全连接门 / 通关点 (透视到最深层) */}
+            <div className="glass-panel" style={{ position: "absolute", left: carWidth - 140, bottom: 120, width: 100, height: 200, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10, background: canGo ? "rgba(168, 255, 178, 0.2)" : "rgba(0,0,0,0.3)", borderRadius: "8px 0 0 8px", borderRight: 0 }}>
+               {px >= carWidth - 180 && canGo ? (
+                  <button className="glass-btn" onClick={onProceed} style={{ padding: "12px 24px", fontSize: 14 }}>进入车厢 ▶</button>
                ) : (
-                  <div style={{ fontSize: 24, textShadow: "0 0 10px #FF003C" }}>🚪</div>
+                  <div style={{ fontSize: 32, opacity: 0.8 }}>🚪</div>
                )}
-            </div>
-
-            {/* 主人公：汪新 - 物理绑定 py */}
-            <div style={{ position: "absolute", bottom: py, left: px - 15, transition: "left 0.1s ease-out", zIndex: 100, textAlign: "center", pointerEvents: "none" }}>
-               {/* 16-Bit 像素级汪新 Sprite */}
-               <div style={{ width: 48, height: 60, backgroundImage: "url('/wangxin.png')", backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat", transform: dir === "L" ? "scaleX(-1)" : "scaleX(1)", filter: "drop-shadow(0 4px 8px rgba(0,240,255,0.6))", mixBlendMode: "screen", margin: "0 auto" }} />
-               <div style={{ position: "absolute", bottom: -18, left: "50%", transform: "translateX(-50%)", padding: "1px 6px", background: "#00F0FF", color: "#000", fontSize: 9, fontWeight: "900", whiteSpace: "nowrap", border: "1px solid #fff" }}>P1:汪新</div>
-               <div style={{ width: 32, height: 6, background: "rgba(0,0,0,0.7)", borderRadius: "50%", filter: "blur(3px)", margin: "0 auto", marginTop: -2, visibility: py > 110 ? "hidden" : "visible" }} />
             </div>
 
           </div>
         </div>
 
-        {/* 底部 Arcade 悬浮交互面板 */}
+        {/* 底部居中的灵动交互面板 (Glass UI) */}
         {nearPax && (
-          <div style={{ position: "absolute", bottom: 45, left: "50%", transform: "translateX(-50%)", zIndex: 200, animation: "fadeUp 0.3s ease" }}>
-            <button onClick={() => paxClick(nearPax)} style={{ padding: "14px 45px", background: "#FF003C", border: "2px solid #00F0FF", color: "#FFF", borderRadius: 2, fontSize: 16, fontWeight: "900", cursor: "pointer", boxShadow: "0 0 25px rgba(255,0,60,0.8)", letterSpacing: 2, fontStyle: "italic" }}>
-              [ PRESS E / CLICK TO INVESTIGATE ]
+          <div style={{ position: "absolute", bottom: 50, left: "50%", transform: "translateX(-50%)", zIndex: 200, animation: "fadeUp 0.3s ease" }}>
+            <button className="glass-btn" onClick={() => paxClick(nearPax)} style={{ padding: "16px 40px", fontSize: 16, borderRadius: 30, background: "rgba(255,255,255,0.4)", color: "#222", textShadow: "none" }}>
+              {paxDone.includes(nearPax.id) ? "✔️ 已记录 " + nearPax.name : "🔍 走近调查此人 (Click)"}
             </button>
           </div>
         )}
@@ -719,6 +711,7 @@ export default function Game() {
       </div>
     );
   }
+
 
 
   // ── Choice Scene ──

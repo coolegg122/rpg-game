@@ -1,0 +1,34 @@
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: 
+remote: - GITHUB PUSH PROTECTION        
+remote:   —————————————————————————————————————————        
+remote:     Resolve the following violations before pushing again        
+remote: 
+remote:     - Push cannot contain secrets        
+remote: 
+remote:             
+remote:      (?) Learn how to resolve a blocked push        
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push        
+remote:             
+remote:             
+remote:       —— GitHub Personal Access Token ——————————————————————        
+remote:        locations:        
+remote:          - commit: 3bf8bca8c18e2c66ad498d00d5e6ebd7c5f073dc        
+remote:            path: auto_export.cjs:7        
+remote:          - commit: 3bf8bca8c18e2c66ad498d00d5e6ebd7c5f073dc        
+remote:            path: check_vercel_deploy.cjs:3        
+remote:          - commit: 3bf8bca8c18e2c66ad498d00d5e6ebd7c5f073dc        
+remote:            path: fix_push.cjs:6        
+remote:          - commit: 3bf8bca8c18e2c66ad498d00d5e6ebd7c5f073dc        
+remote:            path: get_vercel_url.cjs:4        
+remote:          - commit: 3bf8bca8c18e2c66ad498d00d5e6ebd7c5f073dc        
+remote:            path: push_update.cjs:6        
+remote:             
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.        
+remote:        https://github.com/coolegg122/rpg-game/security/secret-scanning/unblock-secret/3BI9hxHcsSs1Qwi5nPMLeUjHBrO        
+remote:             
+remote: 
+remote: 
+To https://github.com/coolegg122/rpg-game.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/coolegg122/rpg-game.git'
